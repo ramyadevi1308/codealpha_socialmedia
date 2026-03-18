@@ -1,0 +1,173 @@
+const express = require("express");
+const app = express();
+
+app.use(express.json());
+
+// ===== In-Memory Database =====
+let users = [];
+let posts = [];
+let comments = [];
+
+// ===== Frontend (HTML + JS) =====
+app.get("/", (req, res) => {
+  res.send(`
+    <html>
+    <head>
+      <title>Mini Social Media</title>
+      <style>
+        body { font-family: Arial; margin: 40px; }
+        input, button { margin: 5px; padding: 5px; }
+        .post { border: 1px solid #ccc; padding: 10px; margin: 10px 0; }
+      </style>
+    </head>
+    <body>
+
+      <h1>Social Media App</h1>
+
+      <h3>Create User</h3>
+      <input id="username" placeholder="Username">
+      <button onclick="createUser()">Create</button>
+
+      <h3>Create Post</h3>
+      <input id="userId" placeholder="User ID">
+      <input id="content" placeholder="Write something...">
+      <button onclick="createPost()">Post</button>
+
+      <h3>All Posts</h3>
+      <div id="posts"></div>
+
+      <script>
+        async function createUser() {
+          let username = document.getElementById("username").value;
+
+          let res = await fetch("/user", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ username })
+          });
+
+          let data = await res.json();
+          alert("User ID: " + data.id);
+        }
+
+        async function createPost() {
+          let userId = document.getElementById("userId").value;
+          let content = document.getElementById("content").value;
+
+          await fetch("/post", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ userId, content })
+          });
+
+          loadPosts();
+        }
+
+        async function likePost(id) {
+          await fetch("/like/" + id, { method: "POST" });
+          loadPosts();
+        }
+
+        async function commentPost(id) {
+          let text = prompt("Enter comment:");
+          await fetch("/comment", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ postId: id, text })
+          });
+          loadPosts();
+        }
+
+        async function loadPosts() {
+          let res = await fetch("/posts");
+          let data = await res.json();
+
+          let html = "";
+          data.forEach(p => {
+            html += \`
+              <div class="post">
+                <b>User:</b> \${p.userId}<br>
+                <b>Post:</b> \${p.content}<br>
+                ❤️ Likes: \${p.likes}<br>
+                <button onclick="likePost(\${p.id})">Like</button>
+                <button onclick="commentPost(\${p.id})">Comment</button>
+                <div><b>Comments:</b></div>
+                \${p.comments.map(c => "<div>- " + c + "</div>").join("")}
+              </div>
+            \`;
+          });
+
+          document.getElementById("posts").innerHTML = html;
+        }
+
+        loadPosts();
+      </script>
+
+    </body>
+    </html>
+  `);
+});
+
+// ===== Backend APIs =====
+
+// Create User
+app.post("/user", (req, res) => {
+  let user = {
+    id: users.length + 1,
+    username: req.body.username,
+    followers: [],
+    following: []
+  };
+  users.push(user);
+  res.json(user);
+});
+
+// Create Post
+app.post("/post", (req, res) => {
+  let post = {
+    id: posts.length + 1,
+    userId: req.body.userId,
+    content: req.body.content,
+    likes: 0,
+    comments: []
+  };
+  posts.push(post);
+  res.json(post);
+});
+
+// Get Posts
+app.get("/posts", (req, res) => {
+  res.json(posts);
+});
+
+// Like Post
+app.post("/like/:id", (req, res) => {
+  let post = posts.find(p => p.id == req.params.id);
+  if (post) post.likes++;
+  res.json(post);
+});
+
+// Add Comment
+app.post("/comment", (req, res) => {
+  let post = posts.find(p => p.id == req.body.postId);
+  if (post) post.comments.push(req.body.text);
+  res.json(post);
+});
+
+// Follow User
+app.post("/follow", (req, res) => {
+  let user = users.find(u => u.id == req.body.userId);
+  let target = users.find(u => u.id == req.body.targetId);
+
+  if (user && target) {
+    user.following.push(target.id);
+    target.followers.push(user.id);
+  }
+
+  res.json({ message: "Followed!" });
+});
+
+// ===== Start Server =====
+app.listen(3000, () => {
+  console.log("Server running at http://localhost:3000");
+});
